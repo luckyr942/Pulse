@@ -1,0 +1,24 @@
+{
+  "name": "pulse-chat-system",
+  "version": "1.0.0",
+  "description": "Horizontally Scalable Chat & Notification System demonstrating distributed systems patterns",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "worker:db": "node src/services/consumer/dbConsumer.js",
+    "worker:notif": "node src/services/notification/notifConsumer.js"
+  },
+  "dependencies": {
+    "amqplib": "^0.10.3",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.4.5",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "mongoose": "^8.3.1",
+    "ioredis": "^5.4.1",
+    "socket.io": "^4.7.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

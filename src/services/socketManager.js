@@ -135,6 +135,45 @@ const initSocketManager = (io) =>{
         socket.on('disconnect', async() =>{
             localSocket.delete(userId);
             logger.info(`User disconnected locally: ${socket.user.userName} (${userId}`);
-        })
+
+            //remove the redis presence indicator
+            await redisClient.del(presenceKey);
+
+            //unsubscribe from the redis inter-server channel
+            await unsubscribeFromUserChannel(userId);
+
+            //broadcast presence state
+            io.emit(SOCKET_EVENTS.PRESENCE_UPDATE, {userId, status: 'offline'});
+        });
     });
-}
+};
+
+
+//deliver a msg to socket connected directly to this port
+const deliverLocal = (userId, messageData) =>{
+    const socketId = localSocket.get(userId);
+    if(socketId){
+        global.io.to(socketId).emit(SOCKET_EVENTS.RECEIVE_MESSAGE, messageData);
+        logger.debug(`Socket delivered locally to user ${userId} on port ${env.PORT}`);
+    }
+};
+
+//routing helper to target specific user across nodes
+const forwardEventToUser = async (recipientId, eventNames, payload) =>{
+    const recipientPresenceKey = `${REDIS.KEYs.PRESENCE_USER}${recipientId}`;
+    const recipientPort = await redisClient.get(recipientPresenceKey);
+    
+    if (recipientPort) {
+        if (parseInt(recipientPort, 10) === env.PORT) {
+         const socketId = localSockets.get(recipientId);
+        if (socketId) global.io.to(socketId).emit(eventName, payload);
+    } else {
+      await publishToUser(recipientId, { eventName, payload });
+    }
+  }
+};
+
+module.exports = {
+    initSocketManager,
+    deliverLocal
+};

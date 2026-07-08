@@ -1,0 +1,139 @@
+Architecture & Implementation Guide: Background
+Workers
+
+This  comprehensive  documentation  outlines  the  operational  lifecycle,  design  paradigms,  and  runtime
+environments of asynchronous background consumers within distributed systems, explicitly mapping to your
+dbConsumer.js  and notifConsumer.js  code architectures.
+
+1. Foundations: What is a Worker?
+
+A Worker (or Consumer) is an independent runtime process completely decoupled from the primary web/API
+application server. While your primary Express application remains dedicated to listening for incoming client
+requests  via  HTTP  or  WebSockets,  background  workers  listen  to  message  broker  pipelines  (such  as
+RabbitMQ) to execute computationally expensive or external tasks asynchronously.
+
+The Core Concept: Deferring Execution
+
+In a standard monolithic workflow, a single process handles request ingestion, database writes, and
+third-party  API  integration  sequentially.  If  any  internal  component  slows  down,  the  entire  user
+experience degrades. Background workers allow your API server to delegate these tasks immediately,
+returning an instantaneous success response to the client.
+
+2. Architectural Workflow Diagram
+
+[Client Side] ──(Sends Message)──> [Express API Server]
+                                           │
+                                  (Publish Event payload)
+                                           │
+                                           ▼
+                                   [RabbitMQ Broker]
+                                   ╱               ╲
+                   (chat.persistence)             (NOTIFICATIONS)
+                           ╱                               ╲
+                          ▼                                 ▼
+                 [dbConsumer.js Process]         [notifConsumer.js Process]
+                          │                                 │
+                 (Writes to MongoDB)             (Dispatches Push Token)
+                          │                                 │
+                          ▼                                 ▼
+                     [MongoDB]                       [FCM / APNs Gateway]
+
+Backend Engineering Guide • Background Workers 1
+
+
+
+3. "Why, When, and Where": Structural Breakdown
+
+Why Use Background Workers?
+
+• Scalability: You can scale your worker nodes completely independently from your HTTP server based on
+system traffic loads.
+
+• Fault Tolerance: If the primary API server crashes, the background workers will continue processing
+messages. Conversely, if your notifications worker fails due to an external network outage, incoming chat
+messages are still preserved safely inside RabbitMQ.
+
+• Resource Distribution: Heavy cryptographic parsing, DB aggregations, or external API networking are
+kept out of the main single-threaded Node.js event loop handling incoming user requests.
+
+When Does It Execute?
+
+File / Consumer Trigger Condition (When) Downstream Action
+
+Pulls the raw payload, validates against
+Immediately after a user submits a chat
+
+dbConsumer.js duplicate processing, and commits to
+message via websocket/API.
+
+MongoDB storage.
+
+Triggered exclusively if the message
+Transforms the payload format and contacts
+
+notifConsumer.js recipient is detected as offline or
+remote push servers (FCM/APNs).
+
+disconnected.
+
+Where Does It Execute?
+
+Workers run in their own dedicated, completely isolated machine processes. They have no access to the
+variable memory context of your main Express server. Communication occurs completely over TCP networks
+via the RabbitMQ message format protocol.
+
+4. Critical Code Analysis: Internal Drivers
+
+A. Load Balancing with prefetch()
+
+await channel.prefetch(10);
+
+This acts as a critical backpressure regulation mechanism. By defining an explicit numerical limit (N = 10),
+RabbitMQ restricts the worker's processing queue to 10 unacknowledged messages maximum. This prevents
+memory leaks and starvation crashes when the system experiences heavy bursts of activity.
+
+B. Idempotency Key Guardrails
+
+const existingMessage = await Message.findOne({ idempotencyKey: data.idempotencyKey });
+
+Backend Engineering Guide • Background Workers 2
+
+
+
+Networks suffer  intermittent  delivery failures.  If  a  worker  saves a message but  loses internet  connection
+before notifying RabbitMQ, RabbitMQ will redeliver the message. Checking for an existing idempotencyKey
+guarantees a strict single-write guarantee per message item, regardless of transport retries.
+
+C. Acknowledgment Mechanics ( ack  vs. nack )
+
+• channel.ack(msg) : Informs the RabbitMQ broker that processing completed perfectly and that the
+payload can safely be deleted from the system disk.
+
+• channel.nack(msg, false, true) : Used during a DB connection failure. Tells RabbitMQ the save
+failed and instructs it to requeue (last parameter set to true ) the message immediately for another
+worker to try.
+
+• channel.nack(msg, false, false) : Used during validation failures. Tells RabbitMQ that the data
+structure is corrupt and should be thrown out immediately (last parameter set to false ) to avoid
+poisonous loops.
+
+5. Developer Instructions: Running locally
+
+To run  your  system during  development,  define  specific  target  scripts  inside  your  main  package.json
+routing block:
+
+"scripts": {
+  "start": "node src/server.js",
+  "worker:db": "node src/workers/dbConsumer.js",
+  "worker:notif": "node src/workers/notifConsumer.js"
+}
+
+Open three entirely separate terminals to maintain isolated logs and track individual process performance:
+
+1. Terminal 1 (Ingress Layer): npm run start
+
+2. Terminal 2 (Database Layer): npm run worker:db
+
+3. Terminal 3 (Notification Layer): npm run worker:notif
+
+Backend Engineering Guide • Background Workers 3

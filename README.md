@@ -188,3 +188,63 @@ We use **Redis Pub/Sub** as a virtual bus. Node 1 prints: "Couriers, deliver thi
 ### Why do we need Nginx `ip_hash`?
 WebSocket connection starts as a normal HTTP Request, which is then upgraded via headers (`Upgrade: websocket`). 
 If a load balancer doesn't have sticky sessions, the initial upgrade handshake might hit Server 1, but the subsequent WebSocket traffic might try to hit Server 2. Since Server 2 has no record of the handshake, the connection drops. `ip_hash` binds the user's IP to the same server node.
+
+
+pulse/
+
+docker-compose.yml
+package.json
+.env
+
+src/
+
+├── config/
+│   ├── utils.js
+│   ├── db.js
+│   ├── redis.js
+│   ├── rabbitmq.js
+│   └── logger.js
+│
+├── shared/
+│   ├── constants/
+│   │   └── index.js
+│   ├── errors/
+│   │   └── index.js
+│   └── middleware/
+│       ├── auth.js
+│       └── error.js
+│
+├── utils/
+│   ├── response.js
+│   ├── retry.js
+│   ├── sleep.js
+│   └── generateUUID.js
+│
+├── models/
+│   ├── User.js
+│   ├── Conversation.js
+│   └── Message.js
+│
+├── services/
+│   ├── auth/
+│   │   └── authService.js
+│   ├── socket/
+│   │   ├── socketManager.js
+│   │   └── redisPubSub.js
+│   └── queue/
+│       └── publisher.js
+│
+├── workers/
+│   ├── dbConsumer.js
+│   └── notifConsumer.js
+│
+├── routes/
+│   └── index.js
+│
+├── public/
+│   ├── index.html
+│   ├── styles.css
+│   └── app.js
+│
+├── app.js
+└── server.js

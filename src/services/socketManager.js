@@ -5,7 +5,7 @@ const { redisClient } = require('../config/redis');
 const User = require('../models/User');
 const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
-const { REDIS, SOCKET_EVENTS } = require('../shared/constants');
+const { REDIS, SOCKET_EVENTS } = require('../shared/constants/messageStatus');
 const { subcribeToUserChannel,unsubscribeFromUserChannel, publishToUser, subscribeToUserChannel } = require('./redisPubSub');
 const {publishToPersistence,publishToNotifications} = require('./publisher');
 
@@ -44,7 +44,7 @@ const initSocketManager = (io) =>{
     
 
         //1 -> presence status to Redis with a 30s TTL 
-        const presenceKey = `${REDIS.KEYS.PRESENCE_USER}${user}`;
+        const presenceKey = `${REDIS.KEYS.PRESENCE_USER}${userId}`;
         await redisClient.set(presenceKey, env.PORT, 'EX', 30);
 
         //2 -> now subscribe the server node to recieve interserver events to thos user
@@ -61,7 +61,7 @@ const initSocketManager = (io) =>{
         //SEND MESSAGE HADLING
         socket.on(SOCKET_EVENTS.SEND_MESSAGE, async (payload, callback) =>{
             try {
-                const { coversationID, recipientId, content, messageType, idempotencyKey} = payload;
+                const {conversationId, recipientId, content, messageType, idempotencyKey} = payload;
 
                 if(!conversationId || !recipientId || !content || !idempotencyKey ) {
                     return callback && callback({ error: 'Missing required parameters '});
@@ -81,7 +81,7 @@ const initSocketManager = (io) =>{
                 const recipientPresenceKey = `${REDIS.KEYS.PRESENCE_USER}${recipientId}`;
                 const recipientPort = await redisClient.get(recipientPresenceKey);
                 
-                if(!recipientPort){
+                if(recipientPort){
                     //recipient is online
                     if(parseInt(recipientPort, 10) === env.PORT) {
                         //CaseA : Connected to the Same server node --> direct delivery 
@@ -95,7 +95,7 @@ const initSocketManager = (io) =>{
                     //Case C: Recipinet is offline --> ROute alert RabbitMQ notification Queue
                     publishToNotifications({
                         recipientId,
-                        sendeName: socket.userName,
+                        senderName: socket.user.userName,
                         content: content.substring(0,50),
                         idempotencyKey
                     });
@@ -160,13 +160,13 @@ const deliverLocal = (userId, messageData) =>{
 
 //routing helper to target specific user across nodes
 const forwardEventToUser = async (recipientId, eventNames, payload) =>{
-    const recipientPresenceKey = `${REDIS.KEYs.PRESENCE_USER}${recipientId}`;
+    const recipientPresenceKey = `${REDIS.KEYS.PRESENCE_USER}${recipientId}`;
     const recipientPort = await redisClient.get(recipientPresenceKey);
     
     if (recipientPort) {
         if (parseInt(recipientPort, 10) === env.PORT) {
-         const socketId = localSockets.get(recipientId);
-        if (socketId) global.io.to(socketId).emit(eventName, payload);
+         const socketId = localSocket.get(recipientId);
+        if (socketId) global.io.to(socketId).emit(eventNames, payload);
     } else {
       await publishToUser(recipientId, { eventName, payload });
     }

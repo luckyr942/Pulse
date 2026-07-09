@@ -8,7 +8,7 @@ const connectDatabase = async () => {
       serverSelectionTimeoutMS: 5000 // Time out after 5s if MongoDB is down
     };
     
-    const connection = await mongoose.connect(env.MONGODB_URI, options);
+    const connection = await mongoose.connect(env.MONGODB_URL, options);
     logger.info(`Database Connected: ${connection.connection.host}`);
   } catch (error) {
     logger.error(`Database Connection Error: ${error.message}`);

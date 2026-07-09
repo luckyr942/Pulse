@@ -5,7 +5,7 @@ const { ValidationError, UnauthorizedError, ConflictError } = require('../shared
 
 const generateToken = (userId) => {
     return jwt.sign({ id: userId}, env.JWT_SECRET,{
-        expiresIn: env.JWT_SECRET || '24h'
+        expiresIn: '24h'
     });
 };
 
@@ -48,6 +48,7 @@ const loginUser = async (userName, password) =>{
             id: user._id,
             userName: user.userName
         },
+        token
     };
 };
 

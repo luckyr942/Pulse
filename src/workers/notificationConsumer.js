@@ -6,7 +6,7 @@ const notifbackgroundWorker = async () =>{
     await connectRabbitMQ();
 
     const channel = getChannel();
-    const queueName = RABBITMQ_QUEUE.NOTIFICATIONS;
+    const queueName = RABBITMQ.QUEUES.NOTIFICATIONS;
 
     logger.info(`Notification Consumer Worker listening on queue: ${queueName}`);
 

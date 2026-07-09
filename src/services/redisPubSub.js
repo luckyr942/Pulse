@@ -1,5 +1,5 @@
 const { redisPubClient, redisSubClient } = require('../config/redis');
-const {Redis} = require('../shared/constants');
+const { REDIS } = require('../shared/constants/messageStatus');
 const logger = require('../config/logger');
 
 let scoketManagerRef = null; //to deliver Socket package 
@@ -11,7 +11,7 @@ const initRedisPubSub = (socketManager) =>{
         try {
             const data = JSON.parse(message);
 
-            if(channel.startsWith(REDIS_URL.CHANNELS.USER_SOCKET)){
+            if(channel.startsWith(REDIS.CHANNELS.USER_SOCKET)){
                 const userId = channel.split(':')[1];
                 logger.debug(`Recieved inter-server route event for user ${userId}`);
 

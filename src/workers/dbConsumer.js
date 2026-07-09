@@ -1,6 +1,6 @@
 const connectDB = require('../config/db');
 const { connectRabbitMQ, getChannel } = require('../config/rabbitmq');
-const { RABBITMQ } = require('../shared/constants');
+const { RABBITMQ } = require('../shared/constants/messageStatus');
 const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const logger = require('../config/logger');
@@ -59,7 +59,7 @@ const backgroundWorker = async () =>{
 
             //reject message to trigger redelivery (false, true = don't requeue)
             //requeue the message on failure (set requeue to true)
-            channel.nack(msg, false, tree);
+            channel.nack(msg, false, true);
         }
     });
 };

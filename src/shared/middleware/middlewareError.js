@@ -1,5 +1,5 @@
 const logger = require('../../config/logger');
-const { HTTP_STATUS } = require('../constants');
+const { HTTP_STATUS } = require('../constants/messageStatus');
 
 const errorMiddleware = (err, req, res, next) => {
   err.statusCode = err.statusCode || HTTP_STATUS.INTERNAL_SERVER_ERROR;

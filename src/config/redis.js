@@ -18,7 +18,7 @@ const redisInstCreateClient = (name) =>{
   });
 
   client.on('error', (err) =>{
-    console.error(`Redis (${name}) Connection error:`, error.message);
+    console.error(`Redis (${name}) Connection error:`, err.message);
   });
 
   return client;

@@ -125,8 +125,6 @@ sequenceDiagram
     end
 ```
 
----
-
 ## 4. Low-Level Design (LLD)
 
 LLD details the code-level interfaces, schemas, routing states, and exact programmatic behaviors.

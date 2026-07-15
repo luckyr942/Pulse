@@ -46,8 +46,8 @@ const startServer = async () =>{
         const dynamicPort = args[0] ? parseInt(args[0], 10) : env.PORT;
         env.PORT = dynamicPort; // Update logger port dynamically
 
-        server.listen(dynamicPort, () => {
-            logger.info(`WebSocket server node running on port: ${dynamicPort}`);
+        server.listen(dynamicPort, env.HOST, () => {
+            logger.info(`WebSocket server node running on ${env.HOST}:${dynamicPort}`);
         });
 
     } catch (error) {

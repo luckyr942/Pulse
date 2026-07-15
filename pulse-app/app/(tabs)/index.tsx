@@ -10,10 +10,10 @@ import {
   Alert,
   Image
 } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from "@expo/vector-icons";
 import { useSystemSocket } from "@/context/socketContext";
 import { BACKEND_URL } from "@/config";
+import { storage } from "@/utils/storage";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 
@@ -121,7 +121,7 @@ export default function HomeScreen() {
 
   const fetchConversations = async () => {
     try {
-      const storedToken = await AsyncStorage.getItem('token');
+      const storedToken = await storage.getItem('token');
       const res = await fetch(`${BACKEND_URL}/api/conversations`, {
         headers: { 'Authorization': `Bearer ${storedToken}` }
       });
@@ -152,7 +152,7 @@ export default function HomeScreen() {
 
   const handleCreateConversation = async (recipientId) => {
     try {
-      const storedToken = await AsyncStorage.getItem('token');
+      const storedToken = await storage.getItem('token');
       const res = await fetch(`${BACKEND_URL}/api/conversations`, {
         method: 'POST',
         headers: {

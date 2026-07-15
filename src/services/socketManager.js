@@ -6,7 +6,7 @@ const User = require('../models/User');
 const Message = require('../models/Message');
 const Conversation = require('../models/Conversation');
 const { REDIS, SOCKET_EVENTS } = require('../shared/constants/messageStatus');
-const { subcribeToUserChannel,unsubscribeFromUserChannel, publishToUser, subscribeToUserChannel } = require('./redisPubSub');
+const { unsubscribeFromUserChannel, publishToUser, subscribeToUserChannel } = require('./redisPubSub');
 const {publishToPersistence,publishToNotifications} = require('./publisher');
 
 //to map the active socket connection on this locl node (userId -> socketId )
@@ -158,15 +158,23 @@ const deliverLocal = (userId, messageData) =>{
     }
 };
 
+const deliverEventLocal = (userId, eventName, payload) => {
+    const socketId = localSocket.get(userId);
+    if (socketId) {
+        global.io.to(socketId).emit(eventName, payload);
+        logger.debug(`Socket event ${eventName} delivered locally to user ${userId} on port ${env.PORT}`);
+    }
+};
+
 //routing helper to target specific user across nodes
-const forwardEventToUser = async (recipientId, eventNames, payload) =>{
+const forwardEventToUser = async (recipientId, eventName, payload) =>{
     const recipientPresenceKey = `${REDIS.KEYS.PRESENCE_USER}${recipientId}`;
     const recipientPort = await redisClient.get(recipientPresenceKey);
     
     if (recipientPort) {
         if (parseInt(recipientPort, 10) === env.PORT) {
          const socketId = localSocket.get(recipientId);
-        if (socketId) global.io.to(socketId).emit(eventNames, payload);
+        if (socketId) global.io.to(socketId).emit(eventName, payload);
     } else {
       await publishToUser(recipientId, { eventName, payload });
     }
@@ -175,5 +183,6 @@ const forwardEventToUser = async (recipientId, eventNames, payload) =>{
 
 module.exports = {
     initSocketManager,
-    deliverLocal
+    deliverLocal,
+    deliverEventLocal
 };

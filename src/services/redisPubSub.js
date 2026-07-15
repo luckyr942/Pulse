@@ -16,7 +16,11 @@ const initRedisPubSub = (socketManager) =>{
                 logger.debug(`Recieved inter-server route event for user ${userId}`);
 
                 if(socketManagerRef){
-                    socketManagerRef.deliverLocal(userId,data);
+                    if (data.eventName && data.payload) {
+                        socketManagerRef.deliverEventLocal(userId, data.eventName, data.payload);
+                    } else {
+                        socketManagerRef.deliverLocal(userId,data);
+                    }
                 }
             }
         } catch (error) {

@@ -14,7 +14,7 @@ import { useRouter } from 'expo-router';
 import { useSystemSocket } from '../../context/socketContext';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BACKEND_URL } from '../../config';
+import { BACKEND_URL, CONNECTION_HINT } from '../../config';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -60,7 +60,14 @@ export default function LoginScreen() {
       router.replace('/(tabs)');
 
     } catch (error) {
-      Alert.alert('Network Error', 'Unable to establish connection to Pulse server');
+      console.warn('Pulse backend connection failed', {
+        url: `${BACKEND_URL}${endpoint}`,
+        error
+      });
+      Alert.alert(
+        'Network Error',
+        `Unable to establish connection to Pulse server.\n\nTrying: ${BACKEND_URL}\n${CONNECTION_HINT}`
+      );
     }
   };
 
@@ -133,7 +140,7 @@ export default function LoginScreen() {
 
               <TouchableOpacity style={styles.toggleViewBtn} onPress={() => setIsLoginView(false)}>
                 <Text style={styles.toggleText}>
-                  Don't have an account? <Text style={styles.highlightText}>Sign up</Text>
+                  Don&apos;t have an account? <Text style={styles.highlightText}>Sign up</Text>
                 </Text>
               </TouchableOpacity>
 

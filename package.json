@@ -5,8 +5,8 @@
   "main": "src/server.js",
   "scripts": {
     "start": "node src/server.js",
-    "worker:db": "node src/services/consumer/dbConsumer.js",
-    "worker:notif": "node src/services/notification/notifConsumer.js"
+    "worker:db": "node src/workers/dbConsumer.js",
+    "worker:notif": "node src/workers/notificationConsumer.js"
   },
   "dependencies": {
     "amqplib": "^0.10.3",

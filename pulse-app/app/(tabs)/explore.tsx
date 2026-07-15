@@ -43,7 +43,7 @@ export default function TelemetryScreen() {
           <View style={styles.metricCard}>
             <Text style={styles.metricLabel}>ACTIVE GATEWAY NODE</Text>
             <Text style={[styles.metricValue, styles.textOrange]}>
-              {BACKEND_URL.replace('http://', '')}
+              {BACKEND_URL.replace(/^https?:\/\//, '')}
             </Text>
           </View>
           <View style={styles.metricCard}>

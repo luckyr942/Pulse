@@ -19,8 +19,8 @@ module.exports = {
 
     RABBITMQ: {
         QUEUES: {
-            PERSISTANCE: 'chat.persistance',
-            NOTIFICATIONS: 'chat.notifcations',
+            PERSISTENCE: 'chat.persistence',
+            NOTIFICATIONS: 'chat.notifications',
             RETRY: 'chat.retry',
             DEAD_LETTER: 'chat.deadletter'
         },

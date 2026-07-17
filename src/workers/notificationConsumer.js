@@ -16,7 +16,7 @@ const notifbackgroundWorker = async () =>{
         try {
             const data = JSON.parse(msg.content.toString());
 
-            logger.info(`[Notification Sent] To recipient: ${data.recipient} 
+            logger.info(`[Notification Sent] To recipient: ${data.recipientId} 
                  | From sender: ${data.senderName} 
                  | Message excerpt: "${data.content}"`);
             

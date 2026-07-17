@@ -3,6 +3,7 @@ import React from 'react';
 import { Colors } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+
 export default function TabLayout() {
   const colorScheme = useColorScheme();
 

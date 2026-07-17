@@ -51,6 +51,16 @@ router.post('/auth/login', validateLogin,
     })
 );
 
+// Fetch all registered users
+const User = require('../models/User');
+router.get('/users', protect,
+    asyncHandler(async (req, res) => {
+        const currentUserId = req.user._id;
+        const users = await User.find({ _id: { $ne: currentUserId } }, 'userName');
+        return sendSuccess(res, users, 'Users fetched successfully', 200);
+    })
+);
+
 //create or fetch conversation between two users
 router.post('/conversations', protect, 
     asyncHandler(async ( req, res ) =>{
@@ -73,7 +83,7 @@ router.post('/conversations', protect,
 
 //Fetch Conversation List for the logged-in user
 router.get('/conversations', protect,
-    asyncHandler(async (req, res) =>{
+    asyncHandler(async (req, res) => {
         const userId = req.user._id;
 
         const list = await Conversation.find({
@@ -83,7 +93,20 @@ router.get('/conversations', protect,
         .populate('lastMessage')
         .sort({ updatedAt: -1 });
 
-        return sendSuccess(res, list , 'Conversations list loaded' , 200);
+        // Calculate unread count dynamically for each conversation room
+        const listWithUnread = await Promise.all(list.map(async (conv) => {
+            const unreadCount = await Message.countDocuments({
+                conversationId: conv._id,
+                sender: { $ne: userId },
+                status: { $ne: 'read' }
+            });
+            return {
+                ...conv.toObject(),
+                unreadCount
+            };
+        }));
+
+        return sendSuccess(res, listWithUnread, 'Conversations list loaded' , 200);
     })
 );
 
@@ -92,6 +115,12 @@ router.get('/conversations', protect,
 router.get('/conversations/:id/messages', protect ,
     asyncHandler(async( req, res) =>{
         const conversationId = req.params.id;
+
+        // Mark all messages from other users in this conversation as read
+        await Message.updateMany(
+            { conversationId, sender: { $ne: req.user._id }, status: { $ne: 'read' } },
+            { $set: { status: 'read' } }
+        );
 
         const historyMessages = await Message.find({conversationId})
         .populate('sender' , 'userName')

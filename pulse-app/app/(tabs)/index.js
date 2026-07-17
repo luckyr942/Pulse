@@ -8,13 +8,14 @@ import {
   Modal,
   FlatList,
   Alert,
-  Image
+  Image,
+  Platform
 } from 'react-native';
 import { Ionicons } from "@expo/vector-icons";
 import { useSystemSocket } from "@/context/socketContext";
 import { BACKEND_URL } from "@/config";
 import { storage } from "@/utils/storage";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 
 // Mock profiles that map directly to MongoDB Seed Accounts for live demo
@@ -85,12 +86,26 @@ const MOCK_PROFILES = [
 
 export default function HomeScreen() {
   const router = useRouter();
-  const { socket, isLoggedIn, currentUser, addLog } = useSystemSocket();
+  const { socket, isLoggedIn, currentUser, addLog, logout } = useSystemSocket();
+  const insets = useSafeAreaInsets();
   const [conversations, setConversations] = useState([]);
   const [loading, setLoading] = useState(true);
   const [onlineUsers, setOnlineUsers] = useState({});
   const [newChatModalVisible, setNewChatModalVisible] = useState(false);
   const [allUsers, setAllUsers] = useState([]);
+
+  const [activeFilter, setActiveFilter] = useState('All');
+
+  const handleLogoutPress = () => {
+    Alert.alert(
+      "Confirm Logout",
+      "Are you sure you want to log out of Pulse?",
+      [
+        { text: "Cancel", style: "cancel" },
+        { text: "Log Out", style: "destructive", onPress: () => logout() }
+      ]
+    );
+  };
 
   // Fetch active conversation list from database
   useEffect(() => {
@@ -103,19 +118,22 @@ export default function HomeScreen() {
   useEffect(() => {
     if (!socket) return;
     
-    socket.on('presence_update', ({ userId, status }) => {
+    const handlePresenceUpdate = ({ userId, status }) => {
       addLog('PRESENCE', `User ${userId} status changed to ${status}`);
       setOnlineUsers(prev => ({ ...prev, [userId]: status === 'online' }));
-    });
+    };
 
-    socket.on('receive_message', (message) => {
-      addLog('RECEIVE_MESSAGE', `Incoming message from ${message.sender}`);
+    const handleReceiveMessage = (message) => {
+      addLog('RECEIVE_MESSAGE', `Incoming message from ${message.senderId || message.sender}`);
       fetchConversations();
-    });
+    };
+
+    socket.on('presence_update', handlePresenceUpdate);
+    socket.on('receive_message', handleReceiveMessage);
 
     return () => {
-      socket.off('presence_update');
-      socket.off('receive_message');
+      socket.off('presence_update', handlePresenceUpdate);
+      socket.off('receive_message', handleReceiveMessage);
     };
   }, [socket]);
 
@@ -136,18 +154,54 @@ export default function HomeScreen() {
     }
   };
 
-  const handleOpenChat = (conv) => {
-    router.push(`/chat/${conv._id}`);
+  const handleOpenChat = (conversation) => {
+    const otherUser = conversation.participants.find(p => {
+      const pId = (p && typeof p === 'object') ? (p._id || p.id) : p;
+      const currentUserId = currentUser?._id || currentUser?.id;
+      return pId !== currentUserId;
+    });
+  
+    const recipientId = (otherUser && typeof otherUser === 'object') ? (otherUser._id || otherUser.id) : otherUser;
+    const recipientName = (otherUser && typeof otherUser === 'object') ? (otherUser.userName || 'Chat') : 'Chat';
+
+    router.push({
+      pathname: "/chat/[conversationId]",
+      params: {
+        conversationId: conversation._id,
+        recipientId: recipientId,
+        name: recipientName
+      },
+    });
   };
 
   const handleOpenNewChatModal = async () => {
     setNewChatModalVisible(true);
-    const mockUsers = [
-      { _id: '6a500abb2109979c5eaaa39a', userName: 'alice' },
-      { _id: '6a500abb2109979c5eaaa39b', userName: 'bob' },
-      { _id: '6a500abb2109979c5eaaa39c', userName: 'charlie' }
-    ];
-    setAllUsers(mockUsers.filter(u => u.userName !== currentUser?.userName));
+    try {
+      const storedToken = await storage.getItem('token');
+      const res = await fetch(`${BACKEND_URL}/api/users`, {
+        headers: { 'Authorization': `Bearer ${storedToken}` }
+      });
+      const result = await res.json();
+      if (result.success) {
+        const currentUserId = currentUser?._id || currentUser?.id;
+        setAllUsers(result.data.filter(u => (u._id || u.id) !== currentUserId));
+      } else {
+        // Fallback mock users if api fails
+        const mockUsers = [
+          { _id: '6a500abb2109979c5eaaa39a', userName: 'alice' },
+          { _id: '6a500abb2109979c5eaaa39b', userName: 'bob' },
+          { _id: '6a500abb2109979c5eaaa39c', userName: 'charlie' }
+        ];
+        setAllUsers(mockUsers.filter(u => u.userName !== currentUser?.userName));
+      }
+    } catch (e) {
+      const mockUsers = [
+        { _id: '6a500abb2109979c5eaaa39a', userName: 'alice' },
+        { _id: '6a500abb2109979c5eaaa39b', userName: 'bob' },
+        { _id: '6a500abb2109979c5eaaa39c', userName: 'charlie' }
+      ];
+      setAllUsers(mockUsers.filter(u => u.userName !== currentUser?.userName));
+    }
   };
 
   const handleCreateConversation = async (recipientId) => {
@@ -191,6 +245,18 @@ export default function HomeScreen() {
     }
   };
 
+  const getGradientColors = (id) => {
+    // Generate beautiful distinct gradient colors based on string hash
+    let hash = 0;
+    const key = id || 'default';
+    for (let i = 0; i < key.length; i++) {
+      hash = key.charCodeAt(i) + ((hash << 5) - hash);
+    }
+    const h1 = Math.abs(hash % 360);
+    const h2 = (h1 + 40) % 360;
+    return [`hsl(${h1}, 75%, 65%)`, `hsl(${h2}, 85%, 50%)`];
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -211,38 +277,52 @@ export default function HomeScreen() {
     }
   });
 
+  // Filter logic
+  const filteredConversations = displayConversations.filter(item => {
+    if (activeFilter === 'Unread') {
+      return item.unreadCount > 0 || (item.isMock && item.unreadCount > 0);
+    }
+    if (activeFilter === 'Groups') {
+      return item.isGroup || item.type === 'group';
+    }
+    return true;
+  });
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Top Header */}
       <View style={styles.header}>
         <View style={styles.leftheader}>
-          <Image
-            source={{ uri: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80' }}
-            style={styles.headerAvatar}
-          />
+          <TouchableOpacity style={styles.userProfileFrame} onPress={handleLogoutPress}>
+            <Text style={styles.userProfileText}>
+              {(currentUser?.userName || 'P').charAt(0).toUpperCase()}
+            </Text>
+          </TouchableOpacity>
           <Text style={styles.headerTitle}>Messages</Text>
         </View>
-        <TouchableOpacity style={styles.searchIcon}>
-          <Ionicons name="search-outline" size={24} color="#4F46E5" />
+        <TouchableOpacity style={styles.searchIcon} onPress={handleOpenNewChatModal}>
+          <Ionicons name="search-outline" size={22} color="#0F172A" />
         </TouchableOpacity>
       </View>
 
       {/* Pill Filters */}
       <View style={styles.filterRow}>
-        <TouchableOpacity style={[styles.filterPill, styles.filterPillActive]}>
-          <Text style={styles.filterTextActive}>All</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.filterPill}>
-          <Text style={styles.filterText}>Unread</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.filterPill}>
-          <Text style={styles.filterText}>Groups</Text>
-        </TouchableOpacity>
+        {['All', 'Unread', 'Groups'].map(filterName => (
+          <TouchableOpacity 
+            key={filterName}
+            style={[styles.filterPill, activeFilter === filterName && styles.filterPillActive]}
+            onPress={() => setActiveFilter(filterName)}
+          >
+            <Text style={[styles.filterText, activeFilter === filterName && styles.filterTextActive]}>
+              {filterName}
+            </Text>
+          </TouchableOpacity>
+        ))}
       </View>
 
       {/* Message Rows */}
       <FlatList
-        data={displayConversations}
+        data={filteredConversations}
         keyExtractor={item => item._id}
         renderItem={({ item }) => {
           let name = '';
@@ -257,6 +337,7 @@ export default function HomeScreen() {
           let showDoubleCheck = false;
           let checkColor = '#6B7280';
           let showLock = false;
+          const [colorStart, colorEnd] = getGradientColors(item._id);
 
           if (item.isMock) {
             name = item.userName;
@@ -272,18 +353,31 @@ export default function HomeScreen() {
             checkColor = item.checkColor || '#6B7280';
             showLock = item.isEncrypted || false;
           } else {
-            const partner = item.participants.find(p => p._id !== currentUser?.id) || { userName: 'User' };
+            const currentUserId = currentUser?._id || currentUser?.id;
+            const partner = item.participants.find(p => p._id !== currentUserId) || { userName: 'User' };
             name = partner.userName;
-            avatarUri = 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=100&q=80';
-            snippet = item.lastMessage ? item.lastMessage.content : 'No messages yet';
+            snippet = item.lastMessage ? (item.lastMessage.content || 'Message') : 'No messages yet';
             isOnline = onlineUsers[partner._id] || false;
+            unread = item.unreadCount || 0;
+            
+            // Format updatedAt time label
+            if (item.updatedAt) {
+              const date = new Date(item.updatedAt);
+              timeLabel = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            }
           }
 
           return (
             <TouchableOpacity style={styles.rowCard} onPress={() => handleCardPress(item)}>
               {/* Profile Avatar with status dots */}
               <View style={styles.avatarContainer}>
-                <Image source={{ uri: avatarUri }} style={styles.rowAvatar} />
+                {avatarUri ? (
+                  <Image source={{ uri: avatarUri }} style={styles.rowAvatar} />
+                ) : (
+                  <View style={[styles.rowAvatarFallback, { backgroundColor: colorStart }]}>
+                    <Text style={styles.rowAvatarFallbackText}>{name.charAt(0).toUpperCase()}</Text>
+                  </View>
+                )}
                 {isOnline && <View style={styles.onlineBadge} />}
                 {showGroupBadge && (
                   <View style={styles.groupBadge}>
@@ -324,17 +418,23 @@ export default function HomeScreen() {
             </TouchableOpacity>
           );
         }}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Ionicons name="chatbubbles-outline" size={48} color="#9CA3AF" />
+            <Text style={styles.emptyText}>No conversations found</Text>
+          </View>
+        }
       />
 
       {/* Floating Action Button (FAB) */}
       <TouchableOpacity style={styles.fab} onPress={handleOpenNewChatModal}>
-        <Ionicons name="pencil" size={24} color="#FFFFFF" />
+        <Ionicons name="pencil" size={22} color="#FFFFFF" />
       </TouchableOpacity>
 
       {/* New Conversation Selector Modal */}
       <Modal visible={newChatModalVisible} animationType="slide">
-        <SafeAreaView style={styles.modalContainer}>
-          <View style={styles.modalHeader}>
+        <View style={styles.modalContainer}>
+          <View style={[styles.modalHeader, { paddingTop: Platform.OS === 'ios' ? insets.top : 16 }]}>
             <TouchableOpacity onPress={() => setNewChatModalVisible(false)}>
               <Ionicons name="close" size={24} color="#111827" />
             </TouchableOpacity>
@@ -343,20 +443,23 @@ export default function HomeScreen() {
           </View>
           <FlatList
             data={allUsers}
-            keyExtractor={item => item._id}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.userSelectRow}
-                onPress={() => handleCreateConversation(item._id)}
-              >
-                <View style={styles.avatarSelect}>
-                  <Text style={styles.avatarSelectText}>{item.userName.charAt(0).toUpperCase()}</Text>
-                </View>
-                <Text style={styles.userSelectName}>{item.userName}</Text>
-              </TouchableOpacity>
-            )}
+            keyExtractor={item => item._id || item.id}
+            renderItem={({ item }) => {
+              const [colorStart] = getGradientColors(item._id || item.id);
+              return (
+                <TouchableOpacity
+                  style={styles.userSelectRow}
+                  onPress={() => handleCreateConversation(item._id || item.id)}
+                >
+                  <View style={[styles.avatarSelect, { backgroundColor: colorStart }]}>
+                    <Text style={styles.avatarSelectText}>{(item.userName || 'U').charAt(0).toUpperCase()}</Text>
+                  </View>
+                  <Text style={styles.userSelectName}>{item.userName}</Text>
+                </TouchableOpacity>
+              );
+            }}
           />
-        </SafeAreaView>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -393,13 +496,56 @@ const styles = StyleSheet.create({
     borderColor: '#E5E7EB',
   },
   headerTitle: {
-    fontSize: 22,
+    fontSize: 24,
+    fontWeight: '900',
+    color: '#0F172A', // Sleek Charcoal
+    letterSpacing: -0.3,
+  },
+  userProfileFrame: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    backgroundColor: '#EEF2F6',
+    borderWidth: 1.5,
+    borderColor: '#E2E8F0',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  userProfileText: {
+    fontSize: 14,
     fontWeight: '800',
-    color: '#3B82F6', // Bold Indigo Title
-    letterSpacing: 0.2,
+    color: '#4F46E5',
+  },
+  rowAvatarFallback: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(0,0,0,0.05)',
+  },
+  rowAvatarFallbackText: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#FFFFFF',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingVertical: 80,
+    gap: 12,
+  },
+  emptyText: {
+    fontSize: 14,
+    color: '#9CA3AF',
+    fontWeight: '600',
   },
   searchIcon: {
-    padding: 6,
+    padding: 8,
+    borderRadius: 12,
+    backgroundColor: '#F8FAFC',
   },
   filterRow: {
     flexDirection: 'row',
@@ -411,14 +557,14 @@ const styles = StyleSheet.create({
     paddingVertical: 8,
     paddingHorizontal: 18,
     borderRadius: 20,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: '#F1F5F9',
   },
   filterPillActive: {
     backgroundColor: '#4F46E5', // Indigo Active Pill
   },
   filterText: {
     fontSize: 13,
-    color: '#6B7280',
+    color: '#64748B',
     fontWeight: '600',
   },
   filterTextActive: {
@@ -432,7 +578,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: '#F1F5F9',
   },
   avatarContainer: {
     position: 'relative',
@@ -444,7 +590,7 @@ const styles = StyleSheet.create({
     height: 52,
     borderRadius: 26,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: '#E2E8F0',
   },
   onlineBadge: {
     position: 'absolute',
@@ -480,7 +626,7 @@ const styles = StyleSheet.create({
   rowName: {
     fontSize: 16,
     fontWeight: '700',
-    color: '#111827',
+    color: '#1E293B',
   },
   snippetRow: {
     flexDirection: 'row',
@@ -489,12 +635,12 @@ const styles = StyleSheet.create({
   },
   rowSnippet: {
     fontSize: 13,
-    color: '#6B7280',
+    color: '#64748B',
     flex: 1,
   },
   encryptedSnippet: {
     fontStyle: 'italic',
-    color: '#4B5563',
+    color: '#475569',
   },
   lockIcon: {
     marginRight: 4,
@@ -510,14 +656,14 @@ const styles = StyleSheet.create({
   },
   timeLabel: {
     fontSize: 11,
-    color: '#9CA3AF',
+    color: '#94A3B8',
     fontWeight: '600',
   },
   unreadCountBadge: {
     minWidth: 18,
     height: 18,
     borderRadius: 9,
-    backgroundColor: '#4F46E5', // Indigo Active badge
+    backgroundColor: '#10B981', // Emerald green badge
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: 4,
@@ -554,12 +700,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: '#F1F5F9',
   },
   modalTitle: {
     fontSize: 17,
     fontWeight: '800',
-    color: '#111827',
+    color: '#0F172A',
   },
   userSelectRow: {
     flexDirection: 'row',
@@ -567,27 +713,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingVertical: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#F3F4F6',
+    borderBottomColor: '#F1F5F9',
   },
   avatarSelect: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: '#EEF2F6',
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: 'rgba(0,0,0,0.05)',
   },
   avatarSelectText: {
     fontSize: 15,
-    fontWeight: '700',
-    color: '#4F46E5',
+    fontWeight: '800',
+    color: '#FFFFFF',
   },
   userSelectName: {
     fontSize: 15,
     fontWeight: '700',
-    color: '#111827',
+    color: '#1E293B',
     marginLeft: 16,
   }
 });

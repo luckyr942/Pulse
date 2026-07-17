@@ -11,7 +11,7 @@ const backgroundWorker = async () =>{
     await connectRabbitMQ();
 
     const channel = getChannel();
-    const queueName = RABBITMQ.QUEUES.PERSISTANCE;
+    const queueName = RABBITMQ.QUEUES.PERSISTENCE;
 
     // fetch only 10 message ata time to throttle load
     await channel.prefetch(10);
@@ -30,9 +30,9 @@ const backgroundWorker = async () =>{
             
             if(!existingMessage){
                 //save the msg to mongoDb
-                await Message.create({
+                const createdMessage = await Message.create({
                     conversationId: data.conversationId,
-                    sender: data.sender,
+                    sender: data.senderId || data.sender,
                     content: data.content,
                     messageType: data.messageType,
                     status: 'sent',
@@ -41,7 +41,7 @@ const backgroundWorker = async () =>{
 
                 //update the conversation's last message reference
                 await Conversation.findByIdAndUpdate(data.conversationId,{
-                    lastMessage: data.conversationId, //links the reference,
+                    lastMessage: createdMessage._id, //links the reference,
                     updatedAt: new Date()
                 });
 

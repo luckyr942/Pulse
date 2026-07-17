@@ -7,7 +7,7 @@ const logger = require('../config/logger');
 // (chat.persistence)
 const publishToPersistence = (messageData) =>{
     try{
-        const channel = getChannel;
+        const channel = getChannel();
         const payload = Buffer.from(JSON.stringify(messageData));
         
         //routing key: 'message.sent'

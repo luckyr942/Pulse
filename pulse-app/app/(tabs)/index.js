@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useCallback, useState, useEffect } from "react";
 import {
   Text,
   View,
@@ -17,72 +17,6 @@ import { BACKEND_URL } from "@/config";
 import { storage } from "@/utils/storage";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-
-// Mock profiles that map directly to MongoDB Seed Accounts for live demo
-const MOCK_PROFILES = [
-  {
-    _id: 'mock_1',
-    isMock: true,
-    userName: 'Elena Vance',
-    dbUserId: '6a500abb2109979c5eaaa39a', // Map to Alice
-    avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=150&q=80',
-    snippet: 'The encryption keys for the Pr...',
-    time: '2m ago',
-    unreadCount: 3,
-    online: true
-  },
-  {
-    _id: 'mock_2',
-    isMock: true,
-    userName: 'Engineering Ops',
-    dbUserId: '6a500abb2109979c5eaaa39b', // Map to Bob
-    avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=150&q=80',
-    snippet: 'Marcus: Deployment successful ...',
-    time: '15m ago',
-    unreadCount: 0,
-    online: false,
-    hasCheck: true,
-    checkColor: '#10B981', // green check
-    isGroup: true,
-    groupCount: '+12'
-  },
-  {
-    _id: 'mock_3',
-    isMock: true,
-    userName: 'Julian Rossi',
-    dbUserId: '6a500abb2109979c5eaaa39b', // Map to Bob
-    avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=150&q=80',
-    snippet: "Let's review the analytics telem...",
-    time: '1h ago',
-    unreadCount: 0,
-    online: false,
-    hasDoubleCheck: true,
-    checkColor: '#4F46E5' // double blue check
-  },
-  {
-    _id: 'mock_4',
-    isMock: true,
-    userName: 'Sarah Jenkins',
-    dbUserId: '6a500abb2109979c5eaaa39c', // Map to Charlie
-    avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=150&q=80',
-    snippet: 'End-to-end encrypted message',
-    time: '3h ago',
-    unreadCount: 0,
-    online: false,
-    isEncrypted: true
-  },
-  {
-    _id: 'mock_5',
-    isMock: true,
-    userName: 'David Chen',
-    dbUserId: '6a500abb2109979c5eaaa39c', // Map to Charlie
-    avatar: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=150&q=80',
-    snippet: 'Attached is the file you requested.',
-    time: 'Yesterday',
-    unreadCount: 0,
-    online: false
-  }
-];
 
 export default function HomeScreen() {
   const router = useRouter();
@@ -107,12 +41,29 @@ export default function HomeScreen() {
     );
   };
 
+  const fetchConversations = useCallback(async () => {
+    try {
+      const storedToken = await storage.getItem('token');
+      const res = await fetch(`${BACKEND_URL}/api/conversations`, {
+        headers: { 'Authorization': `Bearer ${storedToken}` }
+      });
+      const result = await res.json();
+      if (result.success) {
+        setConversations(result.data);
+      }
+    } catch (err) {
+      console.warn('Failed to load conversations list', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
   // Fetch active conversation list from database
   useEffect(() => {
     if (isLoggedIn) {
       fetchConversations();
     }
-  }, [isLoggedIn]);
+  }, [fetchConversations, isLoggedIn]);
 
   // Handle live presence updates and message broadcasts
   useEffect(() => {
@@ -135,24 +86,7 @@ export default function HomeScreen() {
       socket.off('presence_update', handlePresenceUpdate);
       socket.off('receive_message', handleReceiveMessage);
     };
-  }, [socket]);
-
-  const fetchConversations = async () => {
-    try {
-      const storedToken = await storage.getItem('token');
-      const res = await fetch(`${BACKEND_URL}/api/conversations`, {
-        headers: { 'Authorization': `Bearer ${storedToken}` }
-      });
-      const result = await res.json();
-      if (result.success) {
-        setConversations(result.data);
-      }
-    } catch (err) {
-      console.warn('Failed to load conversations list', err);
-    } finally {
-      setLoading(false);
-    }
-  };
+  }, [addLog, fetchConversations, socket]);
 
   const handleOpenChat = (conversation) => {
     const otherUser = conversation.participants.find(p => {
@@ -194,7 +128,7 @@ export default function HomeScreen() {
         ];
         setAllUsers(mockUsers.filter(u => u.userName !== currentUser?.userName));
       }
-    } catch (e) {
+    } catch (_e) {
       const mockUsers = [
         { _id: '6a500abb2109979c5eaaa39a', userName: 'alice' },
         { _id: '6a500abb2109979c5eaaa39b', userName: 'bob' },
@@ -221,27 +155,8 @@ export default function HomeScreen() {
         fetchConversations();
         handleOpenChat(result.data);
       }
-    } catch (err) {
+    } catch (_err) {
       Alert.alert('Error', 'Failed to create conversation session');
-    }
-  };
-
-  // Click handler that automatically links static mockup to database session
-  const handleCardPress = (item) => {
-    if (item.isMock) {
-      // Find if we already have a conversation in database with the recipient
-      const existingConv = conversations.find(c => 
-        c.participants.some(p => p._id === item.dbUserId)
-      );
-
-      if (existingConv) {
-        handleOpenChat(existingConv);
-      } else {
-        // Start a new session in database
-        handleCreateConversation(item.dbUserId);
-      }
-    } else {
-      handleOpenChat(item);
     }
   };
 
@@ -265,25 +180,13 @@ export default function HomeScreen() {
     );
   }
 
-  // Merge live database conversations with static mockup layout rows
-  const displayConversations = [...conversations];
-  
-  MOCK_PROFILES.forEach(mockItem => {
-    const hasLiveSession = conversations.some(c => 
-      c.participants.some(p => p._id === mockItem.dbUserId)
-    );
-    if (!hasLiveSession) {
-      displayConversations.push(mockItem);
-    }
-  });
-
   // Filter logic
-  const filteredConversations = displayConversations.filter(item => {
+  const filteredConversations = conversations.filter(item => {
     if (activeFilter === 'Unread') {
-      return item.unreadCount > 0 || (item.isMock && item.unreadCount > 0);
+      return item.unreadCount > 0;
     }
     if (activeFilter === 'Groups') {
-      return item.isGroup || item.type === 'group';
+      return item.type === 'group';
     }
     return true;
   });
@@ -337,38 +240,22 @@ export default function HomeScreen() {
           let showDoubleCheck = false;
           let checkColor = '#6B7280';
           let showLock = false;
-          const [colorStart, colorEnd] = getGradientColors(item._id);
+          const [colorStart] = getGradientColors(item._id);
 
-          if (item.isMock) {
-            name = item.userName;
-            avatarUri = item.avatar;
-            snippet = item.snippet;
-            timeLabel = item.time;
-            isOnline = item.online;
-            unread = item.unreadCount;
-            showGroupBadge = item.isGroup || false;
-            groupText = item.groupCount || '';
-            showCheck = item.hasCheck || false;
-            showDoubleCheck = item.hasDoubleCheck || false;
-            checkColor = item.checkColor || '#6B7280';
-            showLock = item.isEncrypted || false;
-          } else {
-            const currentUserId = currentUser?._id || currentUser?.id;
-            const partner = item.participants.find(p => p._id !== currentUserId) || { userName: 'User' };
-            name = partner.userName;
-            snippet = item.lastMessage ? (item.lastMessage.content || 'Message') : 'No messages yet';
-            isOnline = onlineUsers[partner._id] || false;
-            unread = item.unreadCount || 0;
-            
-            // Format updatedAt time label
-            if (item.updatedAt) {
-              const date = new Date(item.updatedAt);
-              timeLabel = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            }
+          const currentUserId = currentUser?._id || currentUser?.id;
+          const partner = item.participants.find(p => p._id !== currentUserId) || { _id: '', userName: 'User' };
+          name = partner.userName;
+          snippet = item.lastMessage ? (item.lastMessage.content || 'Message') : 'No messages yet';
+          isOnline = onlineUsers[partner._id] || false;
+          unread = item.unreadCount || 0;
+
+          if (item.updatedAt) {
+            const date = new Date(item.updatedAt);
+            timeLabel = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
           }
 
           return (
-            <TouchableOpacity style={styles.rowCard} onPress={() => handleCardPress(item)}>
+            <TouchableOpacity style={styles.rowCard} onPress={() => handleOpenChat(item)}>
               {/* Profile Avatar with status dots */}
               <View style={styles.avatarContainer}>
                 {avatarUri ? (
@@ -422,6 +309,7 @@ export default function HomeScreen() {
           <View style={styles.emptyContainer}>
             <Ionicons name="chatbubbles-outline" size={48} color="#9CA3AF" />
             <Text style={styles.emptyText}>No conversations found</Text>
+            <Text style={styles.emptyHint}>Start a new chat with the + button.</Text>
           </View>
         }
       />

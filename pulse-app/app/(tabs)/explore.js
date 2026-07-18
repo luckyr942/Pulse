@@ -6,7 +6,8 @@ import {
   TouchableOpacity,
   ScrollView,
   Platform,
-  StatusBar
+  StatusBar,
+  ActivityIndicator
 } from 'react-native';
 import { useSystemSocket } from '../../context/socketContext';
 import { BACKEND_URL } from '../../config';

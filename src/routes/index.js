@@ -130,4 +130,30 @@ router.get('/conversations/:id/messages', protect ,
     })
 );
 
+router.patch('/messages/:messageId/read', protect, 
+    asyncHandler(async (req,res) =>{
+
+        const {messageId} = req.params;
+
+        const message = await Message.findByIdAndUpdate(
+            messageId,
+            {
+                status: 'read',
+                readAt: new Date()
+            },
+            {new : true}
+        ).populate('sender', 'userName');
+
+        if(!message){
+            return res.status(404).json({ 
+                success: false,
+                message: 'Message not found' 
+            });
+        }
+
+        return sendSuccess(res, message, 'Message marked as read', 200);
+
+    })
+);
+
 module.exports = router;

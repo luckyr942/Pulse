@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -46,7 +46,7 @@ export default function ChatScreen() {
         resolveRecipient(conversationId);
       }
     }
-  }, [conversationId]);
+  }, [activeRecipientId, conversationId, resolveRecipient]);
 
   useEffect(() => {
     // If recipient ID updates in params, sync it
@@ -56,8 +56,11 @@ export default function ChatScreen() {
     if (initialChatName && initialChatName !== activeChatName) {
       setActiveChatName(initialChatName);
     }
-  }, [initialRecipientId, initialChatName]);
+  }, [activeChatName, activeRecipientId, initialChatName, initialRecipientId]);
 
+  // ==========================================
+  // 1. UPDATED SOCKET EFFECT
+  // ==========================================
   useEffect(() => {
     if (!socket || !conversationId) return;
 
@@ -83,19 +86,80 @@ export default function ChatScreen() {
       typingTimeoutRef.current = setTimeout(() => setTyping(false), 2000);
     };
 
-    socket.on("receive_message", handleReceiveMessage);
-    socket.on("user_typing", handleTyping);
+    const handleMessageDelivered = (payload) => {
+      if (payload.conversationId !== conversationId) return;
+
+      setMessages((prev) =>
+        prev.map((message) =>
+          (message._id === payload.messageId || message.idempotencyKey === payload.messageId)
+            ? { ...message, status: 'delivered' }
+            : message
+        )
+      );
+    };
+
+    const handleMessageRead = (payload) => {
+      if (payload.conversationId !== conversationId) return;
+
+      setMessages((prev) =>
+        prev.map((message) =>
+          (message._id === payload.messageId || message.idempotencyKey === payload.messageId)
+            ? { ...message, status: 'read' }
+            : message
+        )
+      );
+    };
+
+    socket.on('receive_message', handleReceiveMessage);
+    socket.on('user_typing', handleTyping);
+    socket.on('message_delivered', handleMessageDelivered);
+    socket.on('message_read', handleMessageRead);
 
     return () => {
-      socket.off("receive_message", handleReceiveMessage);
-      socket.off("user_typing", handleTyping);
+      socket.off('receive_message', handleReceiveMessage);
+      socket.off('user_typing', handleTyping);
+      socket.off('message_delivered', handleMessageDelivered);
+      socket.off('message_read', handleMessageRead);
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
     };
   }, [socket, conversationId]);
 
-  const resolveRecipient = async (activeConversationId) => {
+  // ==========================================
+  // 2. NEW MARK AS READ EFFECT
+  // ==========================================
+  useEffect(() => {
+    const markConversationRead = async () => {
+      if (!conversationId || !socket || !messages.length) return;
+
+      const token = await storage.getItem('token');
+
+      for (const message of messages) {
+        const senderId = message.senderId || message.sender?._id;
+        const mine = senderId === currentUser?._id || senderId === currentUser?.id;
+
+        if (!mine && message.status !== 'read' && message._id) {
+          await fetch(`${BACKEND_URL}/api/messages/${message._id}/read`, {
+            method: 'PATCH',
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+
+          socket.emit('message_read', {
+            conversationId,
+            messageId: message._id,
+            senderId
+          });
+        }
+      }
+    };
+
+    markConversationRead();
+  }, [conversationId, messages, socket, currentUser]);
+
+  const resolveRecipient = useCallback(async (activeConversationId) => {
     try {
       const token = await storage.getItem("token");
       const res = await fetch(`${BACKEND_URL}/api/conversations`, {
@@ -121,7 +185,7 @@ export default function ChatScreen() {
     } catch (e) {
       console.warn("Failed to resolve recipient ID", e);
     }
-  };
+  }, [currentUser?._id, currentUser?.id]);
 
   const loadMessages = async (activeConversationId) => {
     try {
@@ -161,6 +225,7 @@ export default function ChatScreen() {
       content,
       createdAt: new Date().toISOString(),
       idempotencyKey,
+      status: 'sent' // added default status for optimistic UI
     };
 
     setMessages((prev) => [...prev, optimisticMessage]);
@@ -210,6 +275,15 @@ export default function ChatScreen() {
           <Text style={[styles.messageText, mine && styles.myMessageText]}>{item.content}</Text>
           {!!timeLabel && (
             <Text style={[styles.timeText, mine && styles.myTimeText]}>{timeLabel}</Text>
+          )}
+          
+          {/* ========================================== */}
+          {/* 3. NEW STATUS TICKS UI ADDED HERE */}
+          {/* ========================================== */}
+          {mine && (
+            <Text style={[styles.statusText, mine && styles.myTimeText]}>
+              {item.status === 'read' ? 'Read' : item.status === 'delivered' ? 'Delivered' : 'Sent'}
+            </Text>
           )}
         </View>
       </View>
@@ -397,6 +471,15 @@ const styles = StyleSheet.create({
   },
   myTimeText: { 
     color: "rgba(255, 255, 255, 0.7)" 
+  },
+  // ==========================================
+  // 4. NEW STATUS TEXT STYLE ADDED HERE
+  // ==========================================
+  statusText: {
+    fontSize: 10,
+    color: '#94A3B8',
+    marginTop: 2,
+    alignSelf: 'flex-end'
   },
   typingText: { 
     paddingHorizontal: 20, 

@@ -12,6 +12,47 @@ const {publishToPersistence,publishToNotifications} = require('./publisher');
 //to map the active socket connection on this locl node (userId -> socketId )
 const localSocket = new Map();
 
+const sendToUser = (userId, eventName, payload) => {
+    const socketId = localSocket.get(userId);
+    if (socketId) {
+        global.io.to(socketId).emit(eventName, payload);
+        return true;
+    }
+    return false;
+};
+
+const notifySenderDelivered = async (messageData) => {
+    const deliveredPayload = {
+        messageId: messageData._id || messageData.idempotencyKey,
+        conversationId: messageData.conversationId,
+        senderId: messageData.senderId,
+        status: 'delivered'
+    };
+
+    if (!sendToUser(messageData.senderId, SOCKET_EVENTS.MESSAGE_DELIVERED, deliveredPayload)) {
+        await publishToUser(messageData.senderId, {
+            eventName: SOCKET_EVENTS.MESSAGE_DELIVERED,
+            payload: deliveredPayload
+        });
+    }
+};
+
+const notifySenderRead = async ({ senderId, conversationId, messageId }) => {
+    const readPayload = {
+        messageId,
+        conversationId,
+        senderId,
+        status: 'read'
+    };
+
+    if (!sendToUser(senderId, SOCKET_EVENTS.MESSAGE_READ, readPayload)) {
+        await publishToUser(senderId, {
+            eventName: SOCKET_EVENTS.MESSAGE_READ,
+            payload: readPayload
+        });
+    }
+};
+
 const initSocketManager = (io) =>{
     //verify the jwt for authentiation
     io.use(async (socket, next) =>{
@@ -131,6 +172,31 @@ const initSocketManager = (io) =>{
             });
         });
 
+        socket.on(SOCKET_EVENTS.MESSAGE_READ, async (payload) => {
+            try {
+                const { conversationId, messageId, senderId } = payload || {};
+
+                if (!conversationId || !messageId || !senderId) return;
+
+                await Message.findOneAndUpdate(
+                    {
+                        $or: [
+                            { _id: messageId },
+                            { idempotencyKey: messageId }
+                        ]
+                    },
+                    {
+                        status: 'read',
+                        readAt: new Date()
+                    }
+                );
+
+                await notifySenderRead({ senderId, conversationId, messageId });
+            } catch (error) {
+                logger.error('Failed to handle message_read event', error);
+            }
+        });
+
         //Handle Disconnect
         socket.on('disconnect', async() =>{
             localSocket.delete(userId);
@@ -155,6 +221,9 @@ const deliverLocal = (userId, messageData) =>{
     if(socketId){
         global.io.to(socketId).emit(SOCKET_EVENTS.RECEIVE_MESSAGE, messageData);
         logger.debug(`Socket delivered locally to user ${userId} on port ${env.PORT}`);
+        notifySenderDelivered(messageData).catch((error) => {
+            logger.error('Failed to emit sender delivered receipt', error);
+        });
     }
 };
 
@@ -163,6 +232,11 @@ const deliverEventLocal = (userId, eventName, payload) => {
     if (socketId) {
         global.io.to(socketId).emit(eventName, payload);
         logger.debug(`Socket event ${eventName} delivered locally to user ${userId} on port ${env.PORT}`);
+        if (eventName === SOCKET_EVENTS.RECEIVE_MESSAGE && payload) {
+            notifySenderDelivered(payload).catch((error) => {
+                logger.error('Failed to emit sender delivered receipt', error);
+            });
+        }
     }
 };
 

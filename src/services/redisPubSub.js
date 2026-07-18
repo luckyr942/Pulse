@@ -5,7 +5,7 @@ const logger = require('../config/logger');
 let scoketManagerRef = null; //to deliver Socket package 
 
 const initRedisPubSub = (socketManager) =>{
-    socketManagerRef = socketManager,
+    socketManagerRef = socketManager;
 
     redisSubClient.on('message', (channel,message) =>{
         try {

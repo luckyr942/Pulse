@@ -20,7 +20,7 @@ This introduces three core system design problems:
 *   **RabbitMQ Message Broker**: Buffers message persistence tasks (write-behind queue) and processes offline alerts (notifications queue) asynchronously.
 *   **MongoDB**: Sturdy, structured document database for historical query retrievals.
 
----
+--
 
 ## 2. High-Level Design (HLD)
 

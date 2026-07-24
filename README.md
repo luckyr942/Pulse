@@ -2,7 +2,7 @@
 
 This document provides a comprehensive breakdown of the **Pulse Horizontally Scalable Chat & Notification System**. It is designed specifically to help you understand the architecture, data flows, and design trade-offs of a real-world production-grade backend.
 
----
+--
 
 ## 1. What Are We Building? (Concept Overview)
 In a simple chat application, you have one server. All users connect to it. If User A sends a message to User B, the server simply forwards it.

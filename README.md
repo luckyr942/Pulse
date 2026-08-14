@@ -25,6 +25,7 @@ The High-Level Design focuses on the system components, boundaries, and how they
 ### Architectural Diagram
 
 ```mermaid
+````
 graph TD
     ClientA["Client A (Alice)"]
     ClientB["Client B (Bob)"]
@@ -69,7 +70,7 @@ graph TD
     MongoWorker -->|Save Message| MongoDB
     
     NotificationQueue -->|Consume| NotifWorker
-```
+````
 
 ### Component Roles
 *   **Nginx**: Acts as the single entrypoint. It receives HTTP and WebSocket requests on Port 80 and forwards them to Node 1 or Node 2. It uses `ip_hash` (sticky sessions) so that once a socket handshakes, it stays connected to the same backend node.

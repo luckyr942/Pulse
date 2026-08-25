@@ -7,9 +7,9 @@ In a simple chat application, you have one server. All users connect to it. If U
 However, **a single server has physical limitations** (memory, CPU, and maximum TCP connections). To support millions of users, we must scale out horizontally by running **multiple server instances** (Node 1, Node 2, etc.) behind a load balancer.
 
 This introduces three core system design problems:
-1.  **Node Discovery (Presence)**: If Alice is connected to Server Node 1, and Bob is connected to Server Node 2, how does Server 1 know where Bob is to send him a message?
-2.  **Inter-Server Communication**: How does Server 1 forward the message to Server 2 so Server 2 can deliver it to Bob?
-3.  **Database Bottleneck (Write-Behind)**: In a high-traffic app, writing every single chat message directly to a disk-based database (like MongoDB) synchronously will crash the database due to write-spike saturation. How do we buffer writes to protect the database?
+1.  Node Discovery (Presence): If Alice is connected to Server Node 1, and Bob is connected to Server Node 2, how does Server 1 know where Bob is to send him a message?
+2.  Inter-Server Communication: How does Server 1 forward the message to Server 2 so Server 2 can deliver it to Bob?
+3.  Database Bottleneck (Write-Behind): In a high-traffic app, writing every single chat message directly to a disk-based database (like MongoDB) synchronously will crash the database due to write-spike saturation. How do we buffer writes to protect the database?
 
 **Pulse** solves these problems using:
 *   **Nginx Load Balancer**: Distributes users across server instances.

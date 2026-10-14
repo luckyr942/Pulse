@@ -11,7 +11,6 @@ const {publishToPersistence,publishToNotifications} = require('./publisher');
 
 //to map the active socket connection on this locl node (userId -> socketId )
 const localSocket = new Map();
-
 const sendToUser = (userId, eventName, payload) => {
     const socketId = localSocket.get(userId);
     if (socketId) {
@@ -20,7 +19,6 @@ const sendToUser = (userId, eventName, payload) => {
     }
     return false;
 };
-
 const notifySenderDelivered = async (messageData) => {
     const deliveredPayload = {
         messageId: messageData._id || messageData.idempotencyKey,
@@ -226,7 +224,6 @@ const deliverLocal = (userId, messageData) =>{
         });
     }
 };
-
 const deliverEventLocal = (userId, eventName, payload) => {
     const socketId = localSocket.get(userId);
     if (socketId) {
@@ -239,7 +236,6 @@ const deliverEventLocal = (userId, eventName, payload) => {
         }
     }
 };
-
 //routing helper to target specific user across nodes
 const forwardEventToUser = async (recipientId, eventName, payload) =>{
     const recipientPresenceKey = `${REDIS.KEYS.PRESENCE_USER}${recipientId}`;
